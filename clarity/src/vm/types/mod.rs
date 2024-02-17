@@ -76,10 +76,9 @@ pub struct ListData {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub struct StandardPrincipalData(
-    #[cfg_attr(test, dummy(faker = "StandardPrincipalVersion()"))] pub u8, 
-    #[cfg_attr(test, dummy(faker = "StandardPrincipalAddress()"))] pub [u8; 20]
+    pub u8, 
+    pub [u8; 20]
 );
 
 impl StandardPrincipalData {
@@ -237,8 +236,6 @@ impl TraitIdentifier {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
-
-#[cfg_attr(test, derive(fake::Dummy))]
 pub enum Value {
     Int(i128),
     UInt(u128),
@@ -577,7 +574,6 @@ impl fmt::Debug for CharType {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub struct ASCIIData {
     pub data: Vec<u8>,
 }
@@ -594,7 +590,6 @@ impl fmt::Display for ASCIIData {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub struct UTF8Data {
     pub data: Vec<Vec<u8>>,
 }

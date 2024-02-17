@@ -26,6 +26,8 @@ use regex::Regex;
 use stacks_common::codec::{
     read_next, read_next_at_most, write_next, Error as codec_error, StacksMessageCodec,
 };
+#[cfg(test)]
+use fake::Faker;
 
 use crate::vm::errors::RuntimeErrorType;
 use crate::vm::types::{QualifiedContractIdentifier, TraitIdentifier, Value};
@@ -411,7 +413,6 @@ impl PreSymbolicExpression {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub enum SymbolicExpressionType {
     AtomValue(Value),
     Atom(ClarityName),
@@ -448,7 +449,6 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub struct SymbolicExpression {
     pub expr: SymbolicExpressionType,
     // this id field is used by compiler passes to store information in

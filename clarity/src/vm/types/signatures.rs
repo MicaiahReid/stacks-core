@@ -26,6 +26,8 @@ use lazy_static::lazy_static;
 use stacks_common::address::c32;
 use stacks_common::types::StacksEpochId;
 use stacks_common::util::hash;
+#[cfg(test)]
+use fake::Faker;
 
 use crate::vm::costs::{cost_functions, runtime_cost, CostOverflowingMath};
 use crate::vm::errors::{CheckErrors, Error as VMError, IncomparableError, RuntimeErrorType};
@@ -78,16 +80,16 @@ impl AssetIdentifier {
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct TupleTypeSignature {
-    type_map: BTreeMap<ClarityName, TypeSignature>,
+    pub(crate) type_map: BTreeMap<ClarityName, TypeSignature>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(test, derive(fake::Dummy))]
-pub struct BufferLength(u32);
+pub struct BufferLength(pub(crate) u32);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(fake::Dummy))]
-pub struct StringUTF8Length(u32);
+pub struct StringUTF8Length(pub(crate) u32);
 
 // INVARIANTS enforced by the Type Signatures.
 //   1. A TypeSignature constructor will always fail rather than construct a
@@ -97,7 +99,6 @@ pub struct StringUTF8Length(u32);
 //        (i.e., the only function that can be called by the constructor before
 //         it fails) is the `.size()` method, which may be used to check the size.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(fake::Dummy))]
 pub enum TypeSignature {
     NoType,
     IntType,
@@ -230,12 +231,11 @@ pub const UTF8_40: TypeSignature = SequenceType(SequenceSubtype::StringType(Stri
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct ListTypeData {
-    max_len: u32,
-    entry_type: Box<TypeSignature>,
+    pub max_len: u32,
+    pub entry_type: Box<TypeSignature>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(::fake::Dummy))]
 pub struct FunctionSignature {
     pub args: Vec<TypeSignature>,
     pub returns: TypeSignature,
@@ -254,6 +254,7 @@ pub enum FunctionArgSignature {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(fake::Dummy))]
 pub enum FunctionReturnsSignature {
     TypeOfArgAtPosition(usize),
     Fixed(TypeSignature),

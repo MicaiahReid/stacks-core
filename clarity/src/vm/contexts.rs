@@ -1001,7 +1001,7 @@ impl<'a, 'b, 'hooks> Environment<'a, 'b, 'hooks> {
         let contract = self
             .global_context
             .database
-        //    .get_contract(contract_identifier)?;
+            //    .get_contract(contract_identifier)?;
             .get_contract2(contract_identifier)?;
 
         let result = {

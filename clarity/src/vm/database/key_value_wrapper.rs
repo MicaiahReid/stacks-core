@@ -18,6 +18,7 @@ use std::clone::Clone;
 use std::cmp::Eq;
 use std::hash::Hash;
 
+use rand::{thread_rng, Rng};
 use hashbrown::HashMap;
 use stacks_common::types::chainstate::StacksBlockId;
 use stacks_common::types::StacksEpochId;
@@ -125,6 +126,7 @@ pub struct RollbackContext {
 }
 
 pub struct RollbackWrapper<'a> {
+    id: u32,
     // the underlying key-value storage.
     store: &'a mut dyn ClarityBackingStore,
     // lookup_map is a history of edits for a given key.
@@ -148,6 +150,7 @@ pub struct RollbackWrapper<'a> {
 //   a real mess of lifetime parameters in the database/context
 //   and eval code.
 pub struct RollbackWrapperPersistedLog {
+    id: u32,
     lookup_map: HashMap<String, Vec<String>>,
     metadata_lookup_map: HashMap<(QualifiedContractIdentifier, String), Vec<String>>,
     stack: Vec<RollbackContext>,
@@ -156,6 +159,7 @@ pub struct RollbackWrapperPersistedLog {
 impl<'a> From<RollbackWrapper<'a>> for RollbackWrapperPersistedLog {
     fn from(o: RollbackWrapper<'a>) -> RollbackWrapperPersistedLog {
         RollbackWrapperPersistedLog {
+            id: o.id,
             lookup_map: o.lookup_map,
             metadata_lookup_map: o.metadata_lookup_map,
             stack: o.stack,
@@ -172,6 +176,7 @@ impl Default for RollbackWrapperPersistedLog {
 impl RollbackWrapperPersistedLog {
     pub fn new() -> RollbackWrapperPersistedLog {
         RollbackWrapperPersistedLog {
+            id: thread_rng().gen_range(1000000..9999999),
             lookup_map: HashMap::new(),
             metadata_lookup_map: HashMap::new(),
             stack: Vec::new(),
@@ -213,6 +218,7 @@ where
 impl<'a> RollbackWrapper<'a> {
     pub fn new(store: &'a mut dyn ClarityBackingStore) -> RollbackWrapper {
         RollbackWrapper {
+            id: thread_rng().gen_range(1000000..9999999),
             store,
             lookup_map: HashMap::new(),
             metadata_lookup_map: HashMap::new(),
@@ -226,6 +232,7 @@ impl<'a> RollbackWrapper<'a> {
         log: RollbackWrapperPersistedLog,
     ) -> RollbackWrapper<'a> {
         RollbackWrapper {
+            id: log.id,
             store,
             lookup_map: log.lookup_map,
             metadata_lookup_map: log.metadata_lookup_map,
@@ -246,6 +253,7 @@ impl<'a> RollbackWrapper<'a> {
     //   this clears all edits from the child's edit queue,
     //     and removes any of those edits from the lookup map.
     pub fn rollback(&mut self) -> Result<(), InterpreterError> {
+        eprintln!("[{}] KV rollback (from depth: {})", self.id, self.stack.len());
         let mut last_item = self.stack.pop().ok_or_else(|| {
             InterpreterError::Expect("ERROR: Clarity VM attempted to commit past the stack.".into())
         })?;
@@ -261,6 +269,14 @@ impl<'a> RollbackWrapper<'a> {
             rollback_lookup_map(&key, &value, &mut self.metadata_lookup_map)?;
         }
 
+        for contract in last_item.pending_contracts.drain(..) {
+            eprintln!("[{}] ... KV removing pending contract: {}", self.id, contract.contract.contract_identifier);
+        }
+
+        for analysis in last_item.contract_analyses.drain(..) {
+            eprintln!("[{}] ... KV removing contract analysis: {}", self.id, analysis.contract_identifier);
+        }
+
         Ok(())
     }
 
@@ -272,15 +288,16 @@ impl<'a> RollbackWrapper<'a> {
         &self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> Option<&PendingContract> {
-        eprintln!("KV querying pending data");
+        eprintln!("[{}] KV querying pending data", self.id);
         for ctx in self.stack.iter().rev() {
             for pending_contract in &ctx.pending_contracts {
                 eprintln!(
-                    "... KV checking pending contract: {:?}",
+                    "[{}] ... KV checking pending contract: {}",
+                    self.id,
                     pending_contract.contract.contract_identifier
                 );
                 if &pending_contract.contract.contract_identifier == contract_identifier {
-                    eprintln!("... KV found pending contract; returning true");
+                    eprintln!("[{}] ... KV found pending contract; returning true", self.id);
                     return Some(pending_contract);
                 }
             }
@@ -289,12 +306,12 @@ impl<'a> RollbackWrapper<'a> {
     }
 
     pub fn commit(&mut self) -> Result<(), InterpreterError> {
-        trace!("KV commit");
         let mut last_item = self.stack.pop().ok_or_else(|| {
             InterpreterError::Expect("ERROR: Clarity VM attempted to commit past the stack.".into())
         })?;
 
         if let Some(next_up) = self.stack.last_mut() {
+            trace!("[{}] KV roll-up commit", self.id);
             // bubble up to the next item in the stack
             // last_mut() must exist because of the if-statement
             for (key, value) in last_item.edits.drain(..) {
@@ -311,11 +328,13 @@ impl<'a> RollbackWrapper<'a> {
                 .contract_analyses
                 .append(&mut last_item.contract_analyses);
         } else {
+            eprintln!("[{}] KV persist commit", self.id);
             // stack is empty, committing to the backing store
             let all_edits =
                 rollback_check_pre_bottom_commit(last_item.edits, &mut self.lookup_map)?;
-                trace!("... KV data edit count: {}", all_edits.len());
+                
             if all_edits.len() > 0 {
+                eprintln!("[{}] ... KV persisting data: {}", self.id, all_edits.len());
                 self.store.put_all_data(all_edits).map_err(|e| {
                     InterpreterError::Expect(format!(
                         "ERROR: Failed to commit data to sql store: {e:?}"
@@ -327,8 +346,9 @@ impl<'a> RollbackWrapper<'a> {
                 last_item.metadata_edits,
                 &mut self.metadata_lookup_map,
             )?;
-            trace!("... KV meta-data edit count: {}", metadata_edits.len());
+            
             if metadata_edits.len() > 0 {
+                eprintln!("[{}] ... KV persisting metadata: {}", self.id, metadata_edits.len());
                 self.store.put_all_metadata(metadata_edits).map_err(|e| {
                     InterpreterError::Expect(format!(
                         "ERROR: Failed to commit data to sql store: {e:?}"
@@ -344,6 +364,8 @@ impl<'a> RollbackWrapper<'a> {
                     .map_err(|e| {
                         InterpreterError::Expect(format!("ERROR: failed to insert contract into backing store: {e:?}"))
                     })?;
+
+                eprintln!("[{}] ... KV persisting contract: {}", self.id, contract.contract.contract_identifier);
                 inserted_contracts.insert(
                     contract.contract.contract_identifier.clone(),
                     contract_data.id,
@@ -404,8 +426,21 @@ impl<'a> RollbackWrapper<'a> {
         let value = self.store.make_contract_commitment(content_hash);
         self.put_data(&key, &value)?;
 
-        eprintln!("KV put contract: {:?}", contract.contract_identifier);
-        eprintln!("... with k/v: {:?} / {:?}", key, value);
+        eprintln!("[{}] KV put contract: {}", self.id, contract.contract_identifier);
+        eprintln!("[{}] ... with k/v: {} / {}", self.id, key, value);
+
+        // TODO: Should probably throw a duplicate contract err here instead
+        for frame in self.stack.iter_mut() {
+            frame
+                .pending_contracts
+                .iter()
+                .position(|x| x.contract.contract_identifier == contract.contract_identifier)
+                .map(|x| {
+                    eprintln!("[{}] KV removing pending contract: {}", self.id, contract.contract_identifier);
+                    frame.pending_contracts.remove(x)
+                });
+        }
+        
 
         let current = self
             .stack
@@ -432,10 +467,10 @@ impl<'a> RollbackWrapper<'a> {
         &mut self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> InterpreterResult<GetContractResult> {
-        trace!("KV get contract for {}", contract_identifier);
+        eprintln!("[{}] KV get contract for {}", self.id, contract_identifier);
         if self.query_pending_data {
             if let Some(pending_contract) = self.find_pending_contract(contract_identifier) {
-                trace!("... KV found pending contract; returning true");
+                eprintln!("[{}] ... KV found pending contract; returning true", self.id);
                 return Ok(GetContractResult::Pending(pending_contract.clone()));
             }
         }
@@ -457,7 +492,7 @@ impl<'a> RollbackWrapper<'a> {
         &mut self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> InterpreterResult<bool> {
-        trace!("KV  has contract for {}", contract_identifier);
+        eprintln!("[{}] KV  has contract for {}", self.id, contract_identifier);
         if self.query_pending_data {
             if self.find_pending_contract(contract_identifier).is_some() {
                 trace!("... KV found pending contract; returning true");
@@ -465,7 +500,7 @@ impl<'a> RollbackWrapper<'a> {
             }
         }
 
-        trace!("... KV querying store");
+        eprintln!("[{}] ... KV querying store", self.id);
         Ok(self.store.contract_exists(contract_identifier)?)
     }
 
@@ -481,7 +516,7 @@ impl<'a> RollbackWrapper<'a> {
         &mut self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> InterpreterResult<u32> {
-        trace!("KV get contract size for {}", contract_identifier);
+        eprintln!("[{}] KV get contract size for {}", self.id, contract_identifier);
         if self.query_pending_data {
             if let Some(pending_contract) = self.find_pending_contract(contract_identifier) {
                 trace!("... KV found pending contract; returning true");
@@ -490,7 +525,7 @@ impl<'a> RollbackWrapper<'a> {
             }
         }
 
-        trace!("... KV querying store");
+        trace!("[{}] ... KV querying store", self.id);
         Ok(self.store.get_contract_size(contract_identifier)?)
     }
 
@@ -621,6 +656,7 @@ impl<'a> RollbackWrapper<'a> {
 
     /// Creates the initial contract commitment for a new contract. This creates
     /// a key in the form of "clarity-contract::{contract.display()}"
+    #[deprecated]
     pub fn prepare_for_contract_metadata(
         &mut self,
         contract: &QualifiedContractIdentifier,
@@ -631,6 +667,7 @@ impl<'a> RollbackWrapper<'a> {
         self.put_data(&key, &value)
     }
 
+    #[deprecated]
     pub fn insert_metadata(
         &mut self,
         contract: &QualifiedContractIdentifier,
@@ -655,6 +692,7 @@ impl<'a> RollbackWrapper<'a> {
 
     // Throws a NoSuchContract error if contract doesn't exist,
     //   returns None if there is no such metadata field.
+    #[deprecated]
     pub fn get_metadata(
         &mut self,
         contract: &QualifiedContractIdentifier,
@@ -685,6 +723,7 @@ impl<'a> RollbackWrapper<'a> {
 
     // Throws a NoSuchContract error if contract doesn't exist,
     //   returns None if there is no such metadata field.
+    #[deprecated]
     pub fn get_metadata_manual(
         &mut self,
         at_height: u32,

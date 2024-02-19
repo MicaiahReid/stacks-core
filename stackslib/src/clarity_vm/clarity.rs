@@ -2287,8 +2287,8 @@ mod tests {
         let mut conn = marf.begin(&StacksBlockId::sentinel(), &StacksBlockId([0 as u8; 32]));
         // should not be in the marf.
         assert_eq!(
-            conn.get_contract_hash(&contract_identifier).unwrap_err(),
-            CheckErrors::NoSuchContract(contract_identifier.to_string()).into()
+            conn.get_contract_hash(&contract_identifier).unwrap(),
+            None
         );
         let sql = conn.get_side_store();
         // sqlite only have entries
@@ -2384,7 +2384,9 @@ mod tests {
 
             conn.as_transaction(|conn| {
                 conn.with_clarity_db_readonly(|ref mut tx| {
-                    let src = tx.get_contract_src(&contract_identifier).unwrap();
+                    let src = tx.get_contract_src2(&contract_identifier)
+                        .expect("failed to get contract src")
+                        .expect("contract source was None");
                     assert_eq!(src, contract);
                 });
             });
@@ -2403,7 +2405,9 @@ mod tests {
 
             conn.as_transaction(|conn| {
                 conn.with_clarity_db_readonly(|ref mut tx| {
-                    let src = tx.get_contract_src(&contract_identifier).unwrap();
+                    let src = tx.get_contract_src2(&contract_identifier)
+                        .expect("failed to get contract src")
+                        .expect("contract source was None");
                     assert_eq!(src, contract);
                 });
             });
@@ -2421,7 +2425,10 @@ mod tests {
 
             conn.as_transaction(|conn| {
                 conn.with_clarity_db_readonly(|ref mut tx| {
-                    assert!(tx.get_contract_src(&contract_identifier).is_none());
+                    assert!(tx.get_contract_src2(&contract_identifier)
+                        .expect("failed to get contract src")
+                        .is_none()
+                    );
                 });
             });
 
@@ -2433,8 +2440,8 @@ mod tests {
 
         // should not be in the marf.
         assert_eq!(
-            conn.get_contract_hash(&contract_identifier).unwrap_err(),
-            CheckErrors::NoSuchContract(contract_identifier.to_string()).into()
+            conn.get_contract_hash(&contract_identifier).expect("failed to get contract hash"),
+            None
         );
 
         let sql = conn.get_side_store();

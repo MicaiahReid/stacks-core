@@ -113,9 +113,6 @@ pub trait ClarityBackingStore {
         contract: &QualifiedContractIdentifier,
     ) -> Result<Option<(StacksBlockId, Sha512Trunc256Sum)>> {
         let key = make_contract_hash_key(contract);
-
-        eprintln!("STORE get_contract_hash for {contract} and key {key}");
-
         let contract_commitment_serialized = self.get_data(&key)?;
         
         if let Some(serialized) = contract_commitment_serialized {
@@ -149,7 +146,7 @@ pub trait ClarityBackingStore {
         &mut self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> Result<Option<StoredContract>> {
-        trace!("STORE get_contract for {contract_identifier}");
+        test_debug!("STORE get_contract for {contract_identifier}");
         let contract_hash = self.get_contract_hash(contract_identifier)?;
 
         if let Some((bhh, contract_hash)) = contract_hash {
@@ -165,6 +162,7 @@ pub trait ClarityBackingStore {
                 let context = rmp_serde::decode::from_slice(&context_decompressed)?;
 
                 let src_decompressed = lz4_flex::block::decompress(&data.source, data.source_size as usize)?;
+                test_debug!("STORE contract found with id #{}", data.id);
 
                 Some(StoredContract {
                     id: data.id,
@@ -178,9 +176,11 @@ pub trait ClarityBackingStore {
                     contract_hash,
                 })
             } else {
+                test_debug!("STORE contract was not found");
                 None
             })
         } else {
+            test_debug!("STORE contract was not found (failed to find bhh)");
             Ok(None)
         }
     }
@@ -189,9 +189,9 @@ pub trait ClarityBackingStore {
         &mut self,
         contract_identifier: &QualifiedContractIdentifier,
     ) -> Result<u32> {
-        trace!("STORE get_contract_size for {contract_identifier}");
+        test_debug!("STORE get_contract_size for {contract_identifier}");
         let (bhh, _) = self.get_contract_hash(contract_identifier)?
-            .ok_or(InterpreterError::Expect("Contract not found.".into()))?;
+            .ok_or(CheckErrors::NoSuchContract(contract_identifier.to_string()))?;
 
         let sizes = SqliteConnection::get_contract_sizes(
             self.get_side_store(),
@@ -213,15 +213,12 @@ pub trait ClarityBackingStore {
             None => return Ok(false),
         };
 
-        eprintln!("STORE contract_exists for {contract_identifier} / {bhh}");
-
         let result = SqliteConnection::contract_exists(
             self.get_side_store(),
             &contract_identifier.issuer.to_string(),
             &contract_identifier.name.to_string(),
             &bhh,
         )?;
-        eprintln!("STORE contract_exists for {contract_identifier} = {result}");
 
         Ok(result)
     }
@@ -230,11 +227,7 @@ pub trait ClarityBackingStore {
     fn insert_contract(&mut self, data: &mut PendingContract) -> Result<ContractData> {
         let contract_identifier = &data.contract.contract_identifier;
         trace!("STORE insert_contract for {contract_identifier}");
-        //let chain_tip_height = self.get_open_chain_tip_height();
         let chain_tip = self.get_open_chain_tip();
-
-        //let (bhh, _) = self.get_contract_hash(contract_identifier)?
-        //    .ok_or(InterpreterError::Expect("Contract not found.".into()))?;
 
         // 'content-hash': src_hash
         // 'contract-src': data.source
@@ -246,7 +239,7 @@ pub trait ClarityBackingStore {
         // Compress the plain-text source code.
         let mut src_compressed = Vec::<u8>::with_capacity(src_len);
         lzzzz::lz4::compress_to_vec(
-            src_bytes,
+            &src_bytes,
             &mut src_compressed,
             lzzzz::lz4::ACC_LEVEL_DEFAULT,
         )?;
@@ -292,7 +285,6 @@ pub trait ClarityBackingStore {
         contract_id: u32,
         analysis: &ContractAnalysis,
     ) -> Result<()> {
-        trace!("STORE insert_contract_analysis for {}", contract_id);
         let analysis_serialized = rmp_serde::to_vec(analysis)?;
 
         let mut analysis_compressed = Vec::<u8>::with_capacity(analysis_serialized.len());

@@ -202,7 +202,7 @@ pub struct StackStxOp {
     /// how many ustx this transaction locks
     pub stacked_ustx: u128,
     pub num_cycles: u8,
-    pub signer_key: StacksPublicKeyBuffer,
+    pub signer_key: Option<StacksPublicKeyBuffer>,
 
     // common to all transactions
     pub txid: Txid,                            // transaction ID
@@ -216,7 +216,6 @@ pub struct PreStxOp {
     /// the output address
     /// (must be a legacy Bitcoin address)
     pub output: StacksAddress,
-    pub signer_key: StacksPublicKeyBuffer,
 
     // common to all transactions
     pub txid: Txid,                            // transaction ID
@@ -475,7 +474,6 @@ impl BlockstackOperationType {
                 "output": stacks_addr_serialize(&op.output),
                 "burn_txid": op.txid,
                 "vtxindex": op.vtxindex,
-                "signer_key": op.signer_key.to_hex(),
             }
         })
     }
@@ -491,7 +489,7 @@ impl BlockstackOperationType {
                 "stacked_ustx": op.stacked_ustx,
                 "burn_txid": op.txid,
                 "vtxindex": op.vtxindex,
-                "signer_key": op.signer_key.to_hex(),
+                "signer_key": op.signer_key.as_ref().map(|k| serde_json::Value::String(k.to_hex())).unwrap_or(serde_json::Value::Null),
             }
         })
     }

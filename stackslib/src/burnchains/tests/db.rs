@@ -21,6 +21,7 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::deps_common::bitcoin::blockdata::transaction::Transaction as BtcTx;
 use stacks_common::deps_common::bitcoin::network::serialize::deserialize;
 use stacks_common::types::chainstate::StacksAddress;
+use stacks_common::types::StacksPublicKeyBuffer;
 use stacks_common::util::hash::*;
 
 use super::*;
@@ -232,6 +233,8 @@ fn test_classify_stack_stx() {
 
     let parser = BitcoinBlockParser::new(BitcoinNetworkType::Testnet, BLOCKSTACK_MAGIC_MAINNET);
 
+    let signer_key = StacksPublicKeyBuffer([0x02; 33]);
+    let signer_pubkey = Secp256k1PublicKey::from_slice(signer_key.as_bytes()).unwrap();
     let pre_stack_stx_0_txid = Txid([5; 32]);
     let pre_stack_stx_0 = BitcoinTransaction {
         txid: pre_stack_stx_0_txid.clone(),
@@ -240,7 +243,7 @@ fn test_classify_stack_stx() {
         data: vec![0; 80],
         data_amt: 0,
         inputs: vec![BitcoinTxInputStructured {
-            keys: vec![],
+            keys: vec![signer_pubkey],
             num_required: 0,
             in_type: BitcoinInputType::Standard,
             tx_ref: (Txid([0; 32]), 1),
@@ -264,7 +267,7 @@ fn test_classify_stack_stx() {
         data: vec![1; 80],
         data_amt: 0,
         inputs: vec![BitcoinTxInputStructured {
-            keys: vec![],
+            keys: vec![signer_pubkey],
             num_required: 0,
             in_type: BitcoinInputType::Standard,
             tx_ref: (Txid([0; 32]), 1),
@@ -288,7 +291,7 @@ fn test_classify_stack_stx() {
         data: vec![1; 80],
         data_amt: 0,
         inputs: vec![BitcoinTxInputStructured {
-            keys: vec![],
+            keys: vec![signer_pubkey],
             num_required: 0,
             in_type: BitcoinInputType::Standard,
             tx_ref: (pre_stack_stx_0_txid.clone(), 1),
@@ -312,7 +315,7 @@ fn test_classify_stack_stx() {
         data: vec![1; 80],
         data_amt: 0,
         inputs: vec![BitcoinTxInputStructured {
-            keys: vec![],
+            keys: vec![signer_pubkey],
             num_required: 0,
             in_type: BitcoinInputType::Standard,
             tx_ref: (Txid([0; 32]), 1),
@@ -336,7 +339,7 @@ fn test_classify_stack_stx() {
         data: vec![1; 80],
         data_amt: 0,
         inputs: vec![BitcoinTxInputStructured {
-            keys: vec![],
+            keys: vec![signer_pubkey],
             num_required: 0,
             in_type: BitcoinInputType::Standard,
             tx_ref: (pre_stack_stx_0_txid.clone(), 2),

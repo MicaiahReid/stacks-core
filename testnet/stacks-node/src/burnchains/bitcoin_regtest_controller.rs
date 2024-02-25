@@ -1160,6 +1160,7 @@ impl BitcoinRegtestController {
     ) -> Option<Transaction> {
         unimplemented!()
     }
+
     #[cfg(test)]
     fn build_stack_stx_tx(
         &mut self,
@@ -1211,6 +1212,8 @@ impl BitcoinRegtestController {
         };
 
         tx.output = vec![consensus_output];
+        tx.output
+            .push(payload.reward_addr.to_bitcoin_tx_out(DUST_UTXO_LIMIT));
 
         self.finalize_tx(
             epoch_id,

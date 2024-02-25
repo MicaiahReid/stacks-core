@@ -31,13 +31,13 @@ pub use crate::vm::analysis::errors::{
     check_argument_count, check_arguments_at_least, check_arguments_at_most, CheckError,
     CheckErrors, CheckResult,
 };
-use crate::vm::analysis::AnalysisDatabase;
 use crate::vm::contexts::Environment;
 use crate::vm::costs::cost_functions::ClarityCostFunction;
 use crate::vm::costs::{
     analysis_typecheck_cost, cost_functions, runtime_cost, ClarityCostFunctionReference,
     CostErrors, CostOverflowingMath, CostTracker, ExecutionCost, LimitedCostTracker,
 };
+use crate::vm::database::ClarityDatabase;
 use crate::vm::functions::define::DefineFunctionsParsed;
 use crate::vm::functions::NativeFunctions;
 use crate::vm::representations::SymbolicExpressionType::{
@@ -79,7 +79,7 @@ pub struct TypeChecker<'a, 'b> {
     pub type_map: TypeMap,
     contract_context: ContractContext,
     function_return_tracker: Option<Option<TypeSignature>>,
-    db: &'a mut AnalysisDatabase<'b>,
+    db: &'a mut ClarityDatabase<'b>,
     pub cost_track: LimitedCostTracker,
     clarity_version: ClarityVersion,
 }
@@ -120,11 +120,12 @@ impl AnalysisPass for TypeChecker<'_, '_> {
     fn run_pass(
         _epoch: &StacksEpochId,
         contract_analysis: &mut ContractAnalysis,
-        analysis_db: &mut AnalysisDatabase,
+        clarity_db: &mut ClarityDatabase,
     ) -> CheckResult<()> {
+        test_debug!("Running type-checking pass (2.1+)");
         let cost_track = contract_analysis.take_contract_cost_tracker();
         let mut command = TypeChecker::new(
-            analysis_db,
+            clarity_db,
             cost_track,
             &contract_analysis.contract_identifier,
             &contract_analysis.clarity_version,
@@ -410,7 +411,7 @@ impl FunctionType {
     ///          called from consensus-critical code.
     pub fn check_args_by_allowing_trait_cast_2_1(
         &self,
-        db: &mut AnalysisDatabase,
+        db: &mut ClarityDatabase,
         clarity_version: ClarityVersion,
         func_args: &[Value],
     ) -> CheckResult<TypeSignature> {
@@ -428,7 +429,8 @@ impl FunctionType {
                         Value::Principal(PrincipalData::Contract(contract)),
                     ) => {
                         let contract_to_check = db
-                            .load_contract(contract, &StacksEpochId::Epoch21)?
+                            .get_contract_analysis(contract, &StacksEpochId::Epoch21)
+                            .map_err(|_| CheckErrors::Expects("Failed to load contract analysis".into()))?
                             .ok_or_else(|| {
                                 CheckErrors::NoSuchContract(contract.name.to_string())
                             })?;
@@ -518,7 +520,7 @@ fn check_function_arg_signature<T: CostTracker>(
 /// Used to check if a function signature is compatible with the function
 /// signature required for a trait.
 fn clarity2_check_functions_compatible<T: CostTracker>(
-    db: &mut AnalysisDatabase,
+    db: &mut ClarityDatabase,
     contract_context: Option<&ContractContext>,
     expected_sig: &FunctionSignature,
     actual_sig: &FunctionSignature,
@@ -562,7 +564,7 @@ fn clarity2_check_functions_compatible<T: CostTracker>(
 /// with compatible functions, and may optionally include other functions not
 /// included in expected_trait.
 pub fn clarity2_trait_check_trait_compliance<T: CostTracker>(
-    db: &mut AnalysisDatabase,
+    db: &mut ClarityDatabase,
     contract_context: Option<&ContractContext>,
     actual_trait_identifier: &TraitIdentifier,
     actual_trait: &BTreeMap<ClarityName, FunctionSignature>,
@@ -604,7 +606,7 @@ pub fn clarity2_trait_check_trait_compliance<T: CostTracker>(
 /// Check if `expected_type` admits `actual_type`, handling traits and callable types
 /// through invoking trait compliance checks.
 fn clarity2_inner_type_check_type<T: CostTracker>(
-    db: &mut AnalysisDatabase,
+    db: &mut ClarityDatabase,
     contract_context: Option<&ContractContext>,
     actual_type: &TypeSignature,
     expected_type: &TypeSignature,
@@ -727,7 +729,8 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
             TypeSignature::CallableType(CallableSubtype::Trait(expected_trait_id)),
         ) => {
             let contract_to_check = match db
-                .load_contract(&contract_identifier, &StacksEpochId::Epoch21)?
+                .get_contract_analysis(&contract_identifier, &StacksEpochId::Epoch21)
+                .map_err(|_| CheckErrors::Expects("Failed to load contract analysis".into()))?
             {
                 Some(contract) => {
                     runtime_cost(
@@ -779,7 +782,7 @@ fn clarity2_inner_type_check_type<T: CostTracker>(
 }
 
 fn clarity2_lookup_trait<T: CostTracker>(
-    db: &mut AnalysisDatabase,
+    db: &mut ClarityDatabase,
     contract_context: Option<&ContractContext>,
     trait_id: &TraitIdentifier,
     tracker: &mut T,
@@ -822,9 +825,9 @@ fn clarity2_lookup_trait<T: CostTracker>(
             )
             .into())
         }
-        Err(e) => {
+        Err(_) => {
             runtime_cost(ClarityCostFunction::AnalysisUseTraitEntry, tracker, 1)?;
-            Err(e)
+            Err(CheckErrors::Expects("Failed to retrieve defined trait".into()).into())
         }
     }
 }
@@ -877,7 +880,7 @@ pub fn no_type() -> TypeSignature {
 
 impl<'a, 'b> TypeChecker<'a, 'b> {
     fn new(
-        db: &'a mut AnalysisDatabase<'b>,
+        db: &'a mut ClarityDatabase<'b>,
         cost_track: LimitedCostTracker,
         contract_identifier: &QualifiedContractIdentifier,
         clarity_version: &ClarityVersion,
@@ -952,6 +955,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         let mut local_context = TypingContext::new(StacksEpochId::Epoch21, self.clarity_version);
 
         for exp in contract_analysis.expressions.iter() {
+            //test_debug!("Type checking expression: {:?}", exp);
             let mut result_res = self.try_type_check_define(exp, &mut local_context);
             if let Err(ref mut error) = result_res {
                 if !error.has_expression() {
@@ -1247,15 +1251,17 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
             ) => {
                 let contract_to_check = self
                     .db
-                    .load_contract(&contract_identifier, &StacksEpochId::Epoch21)?
+                    .get_contract_analysis(&contract_identifier, &StacksEpochId::Epoch21)
+                    .map_err(|_| CheckErrors::Expects("Failed to load contract analysis".into()))?
                     .ok_or(CheckErrors::NoSuchContract(contract_identifier.to_string()))?;
 
                 let contract_defining_trait = self
                     .db
-                    .load_contract(
+                    .get_contract_analysis(
                         &trait_identifier.contract_identifier,
                         &StacksEpochId::Epoch21,
-                    )?
+                    )
+                    .map_err(|_| CheckErrors::Expects("Failed to load contract analysis".into()))?
                     .ok_or(CheckErrors::NoSuchContract(
                         trait_identifier.contract_identifier.to_string(),
                     ))?;
@@ -1430,6 +1436,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
         if let Some(define_type) = DefineFunctionsParsed::try_parse(expression)? {
             match define_type {
                 DefineFunctionsParsed::Constant { name, value } => {
+                    test_debug!("Type checking constant: {:?}", expression);
                     let (v_name, v_type) = self.type_check_define_variable(name, value, context)?;
                     runtime_cost(
                         ClarityCostFunction::AnalysisBindName,
@@ -1439,6 +1446,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     self.contract_context.add_variable_type(v_name, v_type)?;
                 }
                 DefineFunctionsParsed::PrivateFunction { signature, body } => {
+                    test_debug!("Type checking private function: {:?}", expression);
                     let (f_name, f_type) =
                         self.type_check_define_function(signature, body, context)?;
 
@@ -1451,6 +1459,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                         .add_private_function_type(f_name, FunctionType::Fixed(f_type))?;
                 }
                 DefineFunctionsParsed::PublicFunction { signature, body } => {
+                    test_debug!("Type checking public function: {:?}", expression);
                     let (f_name, f_type) =
                         self.type_check_define_function(signature, body, context)?;
                     runtime_cost(
@@ -1470,6 +1479,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     }
                 }
                 DefineFunctionsParsed::ReadOnlyFunction { signature, body } => {
+                    test_debug!("Type checking read-only function: {:?}", expression);
                     let (f_name, f_type) =
                         self.type_check_define_function(signature, body, context)?;
                     runtime_cost(
@@ -1485,6 +1495,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     key_type,
                     value_type,
                 } => {
+                    test_debug!("Type checking map: {:?}", expression);
                     let (f_name, map_type) =
                         self.type_check_define_map(name, key_type, value_type)?;
                     let total_type_size = u64::from(map_type.0.type_size()?)
@@ -1497,6 +1508,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     data_type,
                     initial,
                 } => {
+                    test_debug!("Type checking persisted variable: {:?}", expression);
                     let (v_name, v_type) = self
                         .type_check_define_persisted_variable(name, data_type, initial, context)?;
                     runtime_cost(
@@ -1508,6 +1520,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                         .add_persisted_variable_type(v_name, v_type)?;
                 }
                 DefineFunctionsParsed::BoundedFungibleToken { name, max_supply } => {
+                    test_debug!("Type checking bounded fungible token: {:?}", expression);
                     let token_name = self.type_check_define_ft(name, Some(max_supply), context)?;
                     runtime_cost(
                         ClarityCostFunction::AnalysisBindName,
@@ -1517,6 +1530,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     self.contract_context.add_ft(token_name)?;
                 }
                 DefineFunctionsParsed::UnboundedFungibleToken { name } => {
+                    test_debug!("Type checking unbounded fungible token: {:?}", expression);
                     let token_name = self.type_check_define_ft(name, None, context)?;
                     runtime_cost(
                         ClarityCostFunction::AnalysisBindName,
@@ -1526,6 +1540,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     self.contract_context.add_ft(token_name)?;
                 }
                 DefineFunctionsParsed::NonFungibleToken { name, nft_type } => {
+                    test_debug!("Type checking non-fungible token: {:?}", expression);
                     let (token_name, token_type) =
                         self.type_check_define_nft(name, nft_type, context)?;
                     runtime_cost(
@@ -1536,6 +1551,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     self.contract_context.add_nft(token_name, token_type)?;
                 }
                 DefineFunctionsParsed::Trait { name, functions } => {
+                    test_debug!("Type checking trait: {:?}", expression);
                     let (trait_name, trait_signature) =
                         self.type_check_define_trait(name, functions, context)?;
                     runtime_cost(
@@ -1550,6 +1566,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     name,
                     trait_identifier,
                 } => {
+                    test_debug!("Type checking use trait: {:?}", expression);
                     let result = self.db.get_defined_trait(
                         &trait_identifier.contract_identifier,
                         &trait_identifier.name,
@@ -1578,6 +1595,7 @@ impl<'a, 'b> TypeChecker<'a, 'b> {
                     }
                 }
                 DefineFunctionsParsed::ImplTrait { trait_identifier } => {
+                    test_debug!("Type checking impl trait: {:?}", expression);
                     self.contract_context
                         .add_implemented_trait(trait_identifier.clone())?;
                 }

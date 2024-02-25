@@ -20,6 +20,7 @@ use std::fmt;
 use std::iter::FromIterator;
 
 use stacks_common::types::StacksEpochId;
+use speedy::{Readable, Writable};
 
 use super::costs::{CostErrors, CostOverflowingMath};
 use super::errors::InterpreterError;
@@ -58,6 +59,7 @@ pub enum CallableType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub enum DefineType {
     ReadOnly,
@@ -65,7 +67,8 @@ pub enum DefineType {
     Private,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct DefinedFunction {
     identifier: FunctionIdentifier,
@@ -124,6 +127,7 @@ pub fn cost_input_sized_vararg(args: &[Value]) -> Result<u64> {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
+#[derive(Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct FunctionIdentifier {
     identifier: String,
@@ -243,6 +247,7 @@ impl DefinedFunction {
                     }
                     _ => {
                         if !type_sig.admits(env.epoch(), value)? {
+                            test_debug!("epoch {:?} | type_sig: {:?} does not admit value: {:?}", env.epoch(), type_sig, value);
                             return Err(CheckErrors::TypeValueError(
                                 type_sig.clone(),
                                 value.clone(),

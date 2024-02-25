@@ -22,7 +22,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::{env, fs, io, process};
 
+use clarity::vm::contracts::Contract;
 use clarity::vm::coverage::CoverageReporter;
+use clarity::vm::database::NULL_HEADER_DB;
 use lazy_static::lazy_static;
 use rand::Rng;
 use rusqlite::types::ToSql;
@@ -49,7 +51,7 @@ use crate::chainstate::stacks::index::storage::TrieFileStorage;
 use crate::chainstate::stacks::index::{ClarityMarfTrieId, MarfTrieId};
 use crate::clarity::vm::analysis::contract_interface_builder::build_contract_interface;
 use crate::clarity::vm::analysis::errors::{CheckError, CheckResult};
-use crate::clarity::vm::analysis::{AnalysisDatabase, ContractAnalysis};
+use crate::clarity::vm::analysis::ContractAnalysis;
 use crate::clarity::vm::ast::{build_ast_with_rules, ASTRules};
 use crate::clarity::vm::contexts::{AssetMap, GlobalContext, OwnedEnvironment};
 use crate::clarity::vm::costs::{ExecutionCost, LimitedCostTracker};
@@ -177,7 +179,6 @@ trait ClarityStorage {
         headers_db: &'a dyn HeadersDB,
         burn_db: &'a dyn BurnStateDB,
     ) -> ClarityDatabase<'a>;
-    fn get_analysis_db<'a>(&'a mut self) -> AnalysisDatabase<'a>;
 }
 
 impl ClarityStorage for WritableMarfStore<'_> {
@@ -188,10 +189,6 @@ impl ClarityStorage for WritableMarfStore<'_> {
     ) -> ClarityDatabase<'a> {
         self.as_clarity_db(headers_db, burn_db)
     }
-
-    fn get_analysis_db<'a>(&'a mut self) -> AnalysisDatabase<'a> {
-        self.as_analysis_db()
-    }
 }
 
 impl ClarityStorage for MemoryBackingStore {
@@ -201,10 +198,6 @@ impl ClarityStorage for MemoryBackingStore {
         _burn_db: &'a dyn BurnStateDB,
     ) -> ClarityDatabase<'a> {
         self.as_clarity_db()
-    }
-
-    fn get_analysis_db<'a>(&'a mut self) -> AnalysisDatabase<'a> {
-        self.as_analysis_db()
     }
 }
 
@@ -218,7 +211,7 @@ fn run_analysis_free<C: ClarityStorage>(
     analysis::run_analysis(
         contract_identifier,
         expressions,
-        &mut marf_kv.get_analysis_db(),
+        &mut marf_kv.get_clarity_db(&NULL_HEADER_DB, &NULL_BURN_STATE_DB),
         save_contract,
         LimitedCostTracker::new_free(),
         DEFAULT_CLI_EPOCH,
@@ -250,7 +243,7 @@ fn run_analysis<C: ClarityStorage>(
     analysis::run_analysis(
         contract_identifier,
         expressions,
-        &mut marf_kv.get_analysis_db(),
+        &mut marf_kv.get_clarity_db(&NULL_HEADER_DB, &NULL_BURN_STATE_DB),
         save_contract,
         cost_track,
         DEFAULT_CLI_EPOCH,
@@ -871,7 +864,18 @@ fn install_boot_code<C: ClarityStorage>(header_db: &CLIHeadersDB, marf: &mut C) 
             "Failed to parse program.",
         );
 
-        let analysis_result = run_analysis_free(&contract_identifier, &mut ast, marf, true);
+        // {
+        //     debug!("Saving boot code contract '{}'...", &contract_identifier);
+        //     let contract_context = ContractContext::new(contract_identifier.clone(), ClarityVersion::Clarity2);
+        //     let mut db = marf.get_clarity_db(header_db, &NULL_BURN_STATE_DB);
+        //     db.begin();
+        //     db.insert_contract2(Contract { contract_context }, contract_content)
+        //         .expect("Failed to insert contract: {contract_identifier:?}");
+        //     db.commit()
+        //         .expect("Failed to commit contract: {contract_identifier:?}");
+        // }
+
+        let analysis_result = run_analysis_free(&contract_identifier, &mut ast, marf, false);
         match analysis_result {
             Ok(_) => {
                 let db = marf.get_clarity_db(header_db, &NULL_BURN_STATE_DB);
@@ -1257,7 +1261,7 @@ pub fn invoke_command(invoked_by: &str, args: &[String]) -> (i32, Option<serde_j
                     }
                 };
 
-                match run_analysis_free(&contract_id, &mut ast, &mut analysis_marf, true) {
+                match run_analysis_free(&contract_id, &mut ast, &mut analysis_marf, false) {
                     Ok(_) => (),
                     Err((error, _)) => {
                         println!("Type check error:\n{}", error);
@@ -1306,7 +1310,7 @@ pub fn invoke_command(invoked_by: &str, args: &[String]) -> (i32, Option<serde_j
                 parse(&contract_id, &content, ClarityVersion::Clarity2),
                 "Failed to parse program.",
             );
-            match run_analysis_free(&contract_id, &mut ast, &mut analysis_marf, true) {
+            match run_analysis_free(&contract_id, &mut ast, &mut analysis_marf, false) {
                 Ok(_) => {
                     let result = vm_env
                         .get_exec_environment(None, None, &mut placeholder_context)
@@ -1649,7 +1653,7 @@ pub fn invoke_command(invoked_by: &str, args: &[String]) -> (i32, Option<serde_j
             let (_, _, analysis_result_and_cost) =
                 in_block(header_db, marf_kv, |header_db, mut marf| {
                     let analysis_result =
-                        run_analysis(&contract_identifier, &mut ast, &header_db, &mut marf, true);
+                        run_analysis(&contract_identifier, &mut ast, &header_db, &mut marf, false);
                     match analysis_result {
                         Err(e) => (header_db, marf, Err(e)),
                         Ok(analysis) => {
@@ -1668,6 +1672,16 @@ pub fn invoke_command(invoked_by: &str, args: &[String]) -> (i32, Option<serde_j
                                     )
                                 },
                             );
+
+                            // Persist the contract analysis, since this isn't done within
+                            // the contract initialization (yet?).
+                            let mut db = marf.as_clarity_db(&header_db, &NULL_BURN_STATE_DB);
+                            db.begin();
+                            db
+                                .insert_contract_analysis(&analysis)
+                                .expect("Failed to insert contract analysis");
+                            db.commit().expect("Failed to commit contract analysis");
+
                             let (result, cost) = result_and_cost;
                             (header_db, marf, Ok((analysis, (result, cost))))
                         }
@@ -1992,10 +2006,10 @@ mod test {
     fn test_samples() {
         let db_name = format!("/tmp/db_{}", rand::thread_rng().gen::<i32>());
 
-        eprintln!("initialize");
+        test_debug!("initialize");
         invoke_command("test", &["initialize".to_string(), db_name.clone()]);
 
-        eprintln!("check tokens");
+        test_debug!("check tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2010,7 +2024,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("check tokens (idempotency)");
+        test_debug!("check tokens (idempotency)");
         let invoked = invoke_command(
             "test",
             &[
@@ -2026,7 +2040,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("launch tokens");
+        test_debug!("launch tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2043,7 +2057,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("check names");
+        test_debug!("check names");
         let invoked = invoke_command(
             "test",
             &[
@@ -2059,7 +2073,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("check names with different contract ID");
+        test_debug!("check names with different contract ID");
         let invoked = invoke_command(
             "test",
             &[
@@ -2077,7 +2091,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("check names with analysis");
+        test_debug!("check names with analysis");
         let invoked = invoke_command(
             "test",
             &[
@@ -2095,7 +2109,7 @@ mod test {
         assert!(result["message"].as_str().unwrap().len() > 0);
         assert!(result["analysis"] != json!(null));
 
-        eprintln!("check names with cost");
+        test_debug!("check names with cost");
         let invoked = invoke_command(
             "test",
             &[
@@ -2114,7 +2128,7 @@ mod test {
         assert!(result["costs"] != json!(null));
         assert!(result["assets"] == json!(null));
 
-        eprintln!("launch names with costs and assets");
+        test_debug!("launch names with costs and assets");
         let invoked = invoke_command(
             "test",
             &[
@@ -2135,7 +2149,7 @@ mod test {
         assert!(result["costs"] != json!(null));
         assert!(result["assets"] != json!(null));
 
-        eprintln!("execute tokens");
+        test_debug!("execute tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2156,7 +2170,7 @@ mod test {
         assert!(result["events"].as_array().unwrap().len() == 0);
         assert_eq!(result["output"], json!({"UInt": 1000}));
 
-        eprintln!("eval tokens");
+        test_debug!("eval tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2183,7 +2197,7 @@ mod test {
             })
         );
 
-        eprintln!("eval tokens with cost");
+        test_debug!("eval tokens with cost");
         let invoked = invoke_command(
             "test",
             &[
@@ -2212,7 +2226,7 @@ mod test {
         );
         assert!(result["costs"] != json!(null));
 
-        eprintln!("eval_at_chaintip tokens");
+        test_debug!("eval_at_chaintip tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2239,7 +2253,7 @@ mod test {
             })
         );
 
-        eprintln!("eval_at_chaintip tokens with cost");
+        test_debug!("eval_at_chaintip tokens with cost");
         let invoked = invoke_command(
             "test",
             &[
@@ -2273,10 +2287,10 @@ mod test {
     fn test_assets() {
         let db_name = format!("/tmp/db_{}", rand::thread_rng().gen::<i32>());
 
-        eprintln!("initialize");
+        test_debug!("initialize");
         invoke_command("test", &["initialize".to_string(), db_name.clone()]);
 
-        eprintln!("check tokens");
+        test_debug!("check tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2291,7 +2305,7 @@ mod test {
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);
 
-        eprintln!("launch tokens");
+        test_debug!("launch tokens");
         let invoked = invoke_command(
             "test",
             &[
@@ -2306,7 +2320,7 @@ mod test {
         let exit = invoked.0;
         let result = invoked.1.unwrap();
 
-        eprintln!("{}", serde_json::to_string(&result).unwrap());
+        test_debug!("{}", serde_json::to_string(&result).unwrap());
 
         assert_eq!(exit, 0);
         assert!(result["message"].as_str().unwrap().len() > 0);

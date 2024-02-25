@@ -22,6 +22,7 @@ use hashbrown::HashMap;
 use lazy_static::lazy_static;
 use rusqlite::types::{FromSql, FromSqlResult, ToSql, ToSqlOutput, ValueRef};
 use serde::{Deserialize, Serialize};
+use speedy::{Readable, Writable};
 use stacks_common::types::StacksEpochId;
 
 use crate::boot_util::boot_code_id;
@@ -165,6 +166,7 @@ impl CostTracker for () {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+#[derive(Writable, Readable)]
 pub struct ClarityCostFunctionReference {
     pub contract_id: QualifiedContractIdentifier,
     pub function_name: String,
@@ -237,9 +239,10 @@ impl CostStateSummary {
 }
 
 #[derive(Clone)]
+#[derive(Writable, Readable)]
 /// This struct holds all of the data required for non-free LimitedCostTracker instances
 pub struct TrackerData {
-    cost_function_references: HashMap<&'static ClarityCostFunction, ClarityCostFunctionReference>,
+    cost_function_references: HashMap<ClarityCostFunction, ClarityCostFunctionReference>,
     cost_contracts: HashMap<QualifiedContractIdentifier, ContractContext>,
     contract_call_circuits:
         HashMap<(QualifiedContractIdentifier, ClarityName), ClarityCostFunctionReference>,
@@ -256,6 +259,7 @@ pub struct TrackerData {
 }
 
 #[derive(Clone)]
+#[derive(Writable, Readable)]
 pub enum LimitedCostTracker {
     Limited(TrackerData),
     Free,
@@ -276,7 +280,7 @@ impl LimitedCostTracker {
     }
     pub fn cost_function_references(
         &self,
-    ) -> HashMap<&'static ClarityCostFunction, ClarityCostFunctionReference> {
+    ) -> HashMap<ClarityCostFunction, ClarityCostFunctionReference> {
         match self {
             Self::Free => panic!("Cannot get cost function references on free tracker"),
             Self::Limited(TrackerData {
@@ -554,7 +558,7 @@ fn load_cost_functions(
         // make sure the contract is "cost contract eligible" via the
         //  arithmetic-checking analysis pass
         let (cost_func_ref, cost_func_type) = match clarity_db
-            .load_contract_analysis(&cost_contract)
+            .get_contract_analysis(&cost_contract, &clarity_epoch)
             .map_err(|e| CostErrors::CostComputationFailed(e.to_string()))?
         {
             Some(c) => {
@@ -638,7 +642,7 @@ fn load_cost_functions(
         } else {
             // referring to a user-defined function
             match clarity_db
-                .load_contract_analysis(&target_contract)
+                .get_contract_analysis(&target_contract, &clarity_epoch)
                 .map_err(|e| CostErrors::CostComputationFailed(e.to_string()))?
             {
                 Some(c) => {
@@ -826,16 +830,16 @@ impl TrackerData {
                             error!("Failed to load intended Clarity cost contract";
                                "contract" => %cost_function_ref.contract_id,
                                "error" => ?e);
-                        clarity_db
-                            .roll_back()
-                            .map_err(|e| CostErrors::Expect(e.to_string()))?;
-                        return Err(CostErrors::CostContractLoadFailure);
-                    }
-                };
+                            clarity_db
+                                .roll_back()
+                                .map_err(|e| CostErrors::Expect(e.to_string()))?;
+                            return Err(CostErrors::CostContractLoadFailure);
+                        }
+                    };
                 cost_contracts.insert(cost_function_ref.contract_id.clone(), contract_context);
             }
 
-            m.insert(f, cost_function_ref);
+            m.insert(*f, cost_function_ref);
         }
 
         for (_, circuit_target) in self.contract_call_circuits.iter() {
@@ -1147,6 +1151,7 @@ impl CostTracker for &mut LimitedCostTracker {
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Writable, Readable)]
 pub struct ExecutionCost {
     pub write_length: u64,
     pub write_count: u64,

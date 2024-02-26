@@ -54,6 +54,7 @@ pub mod fakes;
 
 use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
+use std::ops::{Deref, DerefMut};
 
 use serde_json;
 use stacks_common::types::StacksEpochId;

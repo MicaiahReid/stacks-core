@@ -1291,7 +1291,7 @@ impl StacksChainState {
                     Ok(x) => {
                         // store analysis -- if this fails, then the have some pretty bad problems
                         clarity_tx
-                            .save_analysis(&contract_id, &contract_analysis)
+                            .save_analysis(&contract_analysis)
                             .expect("FATAL: failed to store contract analysis");
                         x
                     }

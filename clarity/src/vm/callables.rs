@@ -19,8 +19,8 @@ use std::convert::TryInto;
 use std::fmt;
 use std::iter::FromIterator;
 
-use stacks_common::types::StacksEpochId;
 use speedy::{Readable, Writable};
+use stacks_common::types::StacksEpochId;
 
 use super::costs::{CostErrors, CostOverflowingMath};
 use super::errors::InterpreterError;
@@ -58,8 +58,7 @@ pub enum CallableType {
     ),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(Readable, Writable)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub enum DefineType {
     ReadOnly,
@@ -67,8 +66,7 @@ pub enum DefineType {
     Private,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[derive(Readable, Writable)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct DefinedFunction {
     identifier: FunctionIdentifier,
@@ -126,8 +124,7 @@ pub fn cost_input_sized_vararg(args: &[Value]) -> Result<u64> {
         .map_err(Error::from)
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize)]
-#[derive(Readable, Writable)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Serialize, Deserialize, Readable, Writable)]
 #[cfg_attr(test, derive(fake::Dummy))]
 pub struct FunctionIdentifier {
     identifier: String,
@@ -252,7 +249,7 @@ impl DefinedFunction {
                                 value.clone(),
                             )
                             .into());
-                        } 
+                        }
 
                         if let Some(_) = context.variables.insert(name.clone(), value.clone()) {
                             return Err(CheckErrors::NameAlreadyUsed(name.to_string()).into());

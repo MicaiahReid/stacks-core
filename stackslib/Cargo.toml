@@ -57,7 +57,7 @@ siphasher = "0.3.7"
 wsts = {workspace = true}
 rand_core = {workspace = true}
 p256k1 = "5.5.0"
-clar2wasm = { git = "https://github.com/stacks-network/clarity-wasm.git", rev = "1484b61" }
+clar2wasm = { optional = false, git = "https://github.com/MicaiahReid/clarity-wasm.git", rev="2572d60d658f414e9fe517abd23bf3f44aab21e3" }
 
 [target.'cfg(unix)'.dependencies]
 nix = "0.23"

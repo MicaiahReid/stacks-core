@@ -805,15 +805,28 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 [[package]]
 name = "clar2wasm"
 version = "0.1.0"
-source = "git+https://github.com/stacks-network/clarity-wasm.git#67e7ff9c25a865a83baa3ae312fbf4eb3ea4af6f"
+source = "git+https://github.com/MicaiahReid/clarity-wasm.git?rev=2572d60d658f414e9fe517abd23bf3f44aab21e3#2572d60d658f414e9fe517abd23bf3f44aab21e3"
 dependencies = [
  "chrono",
  "clap 4.4.18",
- "clarity 2.2.0 (git+https://github.com/stacks-network/stacks-core.git?rev=75ee7718db5b251adf7bc3fcd769b78859310d54)",
+ "clarity 2.2.0 (git+https://github.com/stacks-network/stacks-core.git?rev=1e9df56b255247928679961d0a7c2541ad127f59)",
  "lazy_static",
  "regex",
  "rusqlite",
  "sha2 0.10.8",
+ "walrus",
+ "wat",
+]
+
+[[package]]
+name = "clar2wasm"
+version = "0.1.0"
+source = "git+https://github.com/stacks-network/clarity-wasm.git#67e7ff9c25a865a83baa3ae312fbf4eb3ea4af6f"
+dependencies = [
+ "clap 4.4.18",
+ "clarity 2.2.0 (git+https://github.com/stacks-network/stacks-core.git?rev=75ee7718db5b251adf7bc3fcd769b78859310d54)",
+ "lazy_static",
+ "regex",
  "walrus",
  "wat",
 ]
@@ -867,7 +880,7 @@ dependencies = [
 [[package]]
 name = "clarity"
 version = "2.2.0"
-source = "git+https://github.com/stacks-network/stacks-core.git?rev=75ee7718db5b251adf7bc3fcd769b78859310d54#75ee7718db5b251adf7bc3fcd769b78859310d54"
+source = "git+https://github.com/stacks-network/stacks-core.git?rev=1e9df56b255247928679961d0a7c2541ad127f59#1e9df56b255247928679961d0a7c2541ad127f59"
 dependencies = [
  "integer-sqrt",
  "lazy_static",
@@ -876,6 +889,27 @@ dependencies = [
  "regex",
  "rstest 0.17.0",
  "rstest_reuse 0.5.0",
+ "rusqlite",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "serde_stacker",
+ "sha2-asm 0.5.5",
+ "slog",
+ "stacks-common 0.0.2 (git+https://github.com/stacks-network/stacks-core.git?branch=feat/clarity-wasm-next)",
+ "wasmtime",
+]
+
+[[package]]
+name = "clarity"
+version = "2.2.0"
+source = "git+https://github.com/stacks-network/stacks-core.git?rev=75ee7718db5b251adf7bc3fcd769b78859310d54#75ee7718db5b251adf7bc3fcd769b78859310d54"
+dependencies = [
+ "integer-sqrt",
+ "lazy_static",
+ "rand 0.7.3",
+ "rand_chacha 0.2.2",
+ "regex",
  "rusqlite",
  "serde",
  "serde_derive",
@@ -4240,7 +4274,7 @@ version = "0.0.1"
 dependencies = [
  "assert-json-diff",
  "chrono",
- "clar2wasm",
+ "clar2wasm 0.1.0 (git+https://github.com/MicaiahReid/clarity-wasm.git?rev=2572d60d658f414e9fe517abd23bf3f44aab21e3)",
  "clarity 2.2.0 (git+https://github.com/stacks-network/stacks-core.git?branch=feat/clarity-wasm-next)",
  "criterion",
  "curve25519-dalek",
@@ -4288,7 +4322,7 @@ version = "0.0.1"
 source = "git+https://github.com/stacks-network/stacks-core.git?branch=feat/clarity-wasm-next#d84cee6525281468387f2c7b9dc259357992e3aa"
 dependencies = [
  "chrono",
- "clar2wasm",
+ "clar2wasm 0.1.0 (git+https://github.com/stacks-network/clarity-wasm.git)",
  "clarity 2.2.0 (git+https://github.com/stacks-network/stacks-core.git?branch=feat/clarity-wasm-next)",
  "curve25519-dalek",
  "ed25519-dalek",

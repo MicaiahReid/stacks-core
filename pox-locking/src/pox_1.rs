@@ -23,7 +23,9 @@ use clarity::vm::errors::{Error as ClarityError, RuntimeErrorType};
 use clarity::vm::events::{STXEventType, STXLockEventData, StacksTransactionEvent};
 use clarity::vm::types::PrincipalData;
 use clarity::vm::Value;
+#[cfg(not(feature = "wasm"))]
 use slog::slog_debug;
+#[cfg(not(feature = "wasm"))]
 use stacks_common::debug;
 
 use crate::LockingError;
@@ -94,6 +96,7 @@ pub fn pox_lock_v1(
     let mut snapshot = db.get_stx_balance_snapshot(principal);
 
     if snapshot.balance().was_locked_by_v2() {
+        #[cfg(not(feature = "wasm"))]
         debug!("PoX Lock attempted on an account locked by v2");
         return Err(LockingError::DefunctPoxContract);
     }
@@ -106,6 +109,7 @@ pub fn pox_lock_v1(
     }
     snapshot.lock_tokens_v1(lock_amount, unlock_burn_height);
 
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "PoX v1 lock applied";
         "pox_locked_ustx" => snapshot.balance().amount_locked(),
@@ -131,6 +135,7 @@ pub fn handle_contract_call(
         return Ok(());
     }
 
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "Handle special-case contract-call to {:?} {} (which returned {:?})",
         "pox-1", function_name, value

@@ -30,8 +30,10 @@ use clarity::vm::contexts::GlobalContext;
 use clarity::vm::errors::{Error as ClarityError, RuntimeErrorType};
 use clarity::vm::types::{PrincipalData, QualifiedContractIdentifier};
 use clarity::vm::Value;
+#[cfg(not(feature = "wasm"))]
 use slog::slog_warn;
 use stacks_common::types::StacksEpochId;
+#[cfg(not(feature = "wasm"))]
 use stacks_common::warn;
 
 mod events;
@@ -71,6 +73,7 @@ pub fn handle_contract_call_special_cases(
                 <= global_context.database.get_current_burnchain_block_height()
         {
             // NOTE: get-pox-info is read-only, so it can call old pox v1 stuff
+            #[cfg(not(feature = "wasm"))]
             warn!("PoX-1 function call attempted on an account after v1 unlock height";
                   "v1_unlock_ht" => global_context.database.get_v1_unlock_height(),
                   "current_burn_ht" => global_context.database.get_current_burnchain_block_height(),
@@ -86,6 +89,7 @@ pub fn handle_contract_call_special_cases(
     } else if *contract_id == boot_code_id(POX_2_NAME, global_context.mainnet) {
         if !pox_2::is_read_only(function_name) && global_context.epoch_id >= StacksEpochId::Epoch22
         {
+            #[cfg(not(feature = "wasm"))]
             warn!("PoX-2 function call attempted on an account after Epoch 2.2";
                   "v2_unlock_ht" => global_context.database.get_v2_unlock_height(),
                   "current_burn_ht" => global_context.database.get_current_burnchain_block_height(),
@@ -109,6 +113,7 @@ pub fn handle_contract_call_special_cases(
     } else if *contract_id == boot_code_id(POX_3_NAME, global_context.mainnet) {
         if !pox_3::is_read_only(function_name) && global_context.epoch_id >= StacksEpochId::Epoch25
         {
+            #[cfg(not(feature = "wasm"))]
             warn!("PoX-3 function call attempted on an account after Epoch 2.5";
                   "v3_unlock_ht" => global_context.database.get_v3_unlock_height(),
                   "current_burn_ht" => global_context.database.get_current_burnchain_block_height(),

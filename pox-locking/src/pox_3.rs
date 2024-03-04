@@ -23,7 +23,9 @@ use clarity::vm::errors::{Error as ClarityError, RuntimeErrorType};
 use clarity::vm::events::{STXEventType, STXLockEventData, StacksTransactionEvent};
 use clarity::vm::types::{PrincipalData, QualifiedContractIdentifier};
 use clarity::vm::{Environment, Value};
+#[cfg(not(feature = "wasm"))]
 use slog::{slog_debug, slog_error};
+#[cfg(not(feature = "wasm"))]
 use stacks_common::{debug, error};
 
 use crate::events::synthesize_pox_event_info;
@@ -80,6 +82,7 @@ pub fn pox_lock_v3(
     }
     snapshot.lock_tokens_v3(lock_amount, unlock_burn_height);
 
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "PoX v3 lock applied";
         "pox_locked_ustx" => snapshot.balance().amount_locked(),
@@ -116,6 +119,7 @@ pub fn pox_lock_extend_v3(
 
     let amount_locked = snapshot.balance().amount_locked();
 
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "PoX v3 lock applied";
         "pox_locked_ustx" => amount_locked,
@@ -165,6 +169,7 @@ pub fn pox_lock_increase_v3(
 
     let out_balance = snapshot.canonical_balance_repr();
 
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "PoX v3 lock increased";
         "pox_locked_ustx" => out_balance.amount_locked(),
@@ -186,6 +191,7 @@ fn handle_stack_lockup_pox_v3(
     function_name: &str,
     value: &Value,
 ) -> Result<Option<StacksTransactionEvent>, ClarityError> {
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "Handle special-case contract-call to {:?} {} (which returned {:?})",
         boot_code_id(POX_3_NAME, global_context.mainnet),
@@ -257,6 +263,7 @@ fn handle_stack_lockup_extension_pox_v3(
     //  and performed the extension checks. Now, the VM needs to update the account locks
     //  (because the locks cannot be applied directly from the Clarity code itself)
     // applying a pox lock at this point is equivalent to evaluating a transfer
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "Handle special-case contract-call to {:?} {} (which returned {:?})",
         boot_code_id("pox-3", global_context.mainnet),
@@ -321,6 +328,7 @@ fn handle_stack_lockup_increase_pox_v3(
     //  and performed the increase checks. Now, the VM needs to update the account locks
     //  (because the locks cannot be applied directly from the Clarity code itself)
     // applying a pox lock at this point is equivalent to evaluating a transfer
+    #[cfg(not(feature = "wasm"))]
     debug!(
         "Handle special-case contract-call";
         "contract" => ?boot_code_id("pox-3", global_context.mainnet),
@@ -398,6 +406,7 @@ pub fn handle_contract_call(
                 Ok(Some(event_info)) => Some(event_info),
                 Ok(None) => None,
                 Err(e) => {
+                    #[cfg(not(feature = "wasm"))]
                     error!("Failed to synthesize PoX-3 event info: {:?}", &e);
                     None
                 }
